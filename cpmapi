@@ -1,0 +1,88 @@
+#!/usr/bin/php
+<?php
+
+	require_once(__DIR__ . '/config.php');
+	require_once(__DIR__ . '/lib/cpmapi.lib.php');
+
+	define('CPMAPI_ENDPOINT', (CPMAPI_ENVIRONMENT == 'production' ?
+		'https://cms.wbez.org/v2/' :
+		'https://cms-stage.wbez.org/v2/'));
+
+	$supported_nouns_string = implode(' ', array_keys($supported_nouns));
+	$supported_verbs_string = implode(' ', array_keys($supported_verbs));
+
+	$usage_text =<<<EOH
+
+Usage:
+  php cpmapi.php [VERB] [NOUN] [OPTIONS]
+
+Supported [VERB] values: $supported_verbs_string
+Supported [NOUN] values: $supported_nouns_string
+
+See the README.md file for full usage options.
+
+EOH;
+
+	$verb = (isset($argv[1]) ? $argv[1] : null);
+	$noun = (isset($argv[2]) ? $argv[2] : null);
+	$args = array_slice($argv, 3);
+	$return_json = false;
+	$cms_object = new stdClass();
+	$env = 'development';
+
+	if (!count($args) || !$verb || !$noun) {
+		print $argv[0] . " : Missing arguments.\r\n";
+		print $usage_text;
+		exit(1);
+	}
+
+	if (!get_cms_path($noun)) {
+		print $argv[0] . " : Unsupported noun " . $noun. ".\r\n";
+		print $usage_text;
+		exit(1);
+	}
+
+	if (!get_http_method($verb)) {
+		print $argv[0] . " : Unsupported verb " . $verb. ".\r\n";
+		print $usage_text;
+		exit(1);
+	}
+
+	// Parse arguments
+	foreach ($args as $arg) {
+
+		$matches = array();
+		$key = $value = null;
+
+		if (preg_match('/^--obj\:(.*?)\=(.*)$/', $arg, $matches)) {
+
+			// update the CMS object at this path with this value
+			$key = $matches[1];
+			$value = $matches[2];
+			update_cms_object($cms_object, $key, $value);
+
+		} else if (preg_match('/^--test-logging$/', $arg)) {
+
+			send_to_slack("CPMAPI Command Line Interface: Test Message");
+			exit(0);
+
+		} else if (preg_match('/^--test-token$/', $arg)) {
+
+			print get_cms_token();
+			exit(0);
+
+		} else if (preg_match('/^--json$/', $arg)) {
+			$return_json = true;
+		}
+
+	}
+
+	if ($return_json) {
+		print json_encode($cms_object, JSON_UNESCAPED_SLASHES);
+	} else {
+		send_to_cms($noun, $verb, $cms_object);
+	}
+
+	exit(0);
+
+?>
